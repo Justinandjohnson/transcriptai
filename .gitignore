@@ -1,0 +1,15 @@
+.env
+node_modules/
+.venv/
+.venv311/
+uploads/
+test-results/
+test-debug.png
+test-result.png
+*.m4a
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.DS_Store

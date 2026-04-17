@@ -1,0 +1,8 @@
+Flask>=3.0.0
+Flask-Cors>=4.0.0
+openai>=1.40.0
+ffmpeg-python>=0.2.0
+pydub>=0.25.1
+python-dotenv>=1.0.1
+imageio-ffmpeg>=0.5.1
+gunicorn>=22.0.0

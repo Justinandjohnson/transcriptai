@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transcription App</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <!-- Background animation particles -->
+    <div class="particles-bg"></div>
+    
+    <div id="app">
+        <h1 class="animated-title">
+            <span class="title-icon">🎙️</span>
+            <span class="title-text">Transcription App</span>
+        </h1>
+        <div id="dashboard">
+            <!-- Conversation History Panel -->
+            <aside id="history-panel" class="history-panel">
+                <h2>History</h2>
+                <ul id="history-list"></ul>
+            </aside>
+            <!-- Main Transcription Panel -->
+            <div class="main-panel">
+                <div id="drop-zone" class="drop-zone">
+                    <div class="drop-zone-inner">
+                        <div class="upload-animation">
+                            <div class="pulse-ring"></div>
+                            <div class="pulse-ring"></div>
+                            <div class="upload-icon-wrapper">
+                                <span class="upload-icon">📁</span>
+                            </div>
+                        </div>
+                        <p class="drop-text">Drag & drop audio/video files here,<br>or click to select multiple</p>
+                        <p style="font-size: 0.85em; color: #718096; margin-top: 8px;">📌 You can select multiple files at once!</p>
+                        <div class="supported-formats">
+                            <span class="format-badge">.mp3</span>
+                            <span class="format-badge">.wav</span>
+                            <span class="format-badge">.m4a</span>
+                            <span class="format-badge">.mp4</span>
+                        </div>
+                    </div>
+                    <input type="file" id="file-input" accept=".mp3,.wav,.m4a,.mp4" multiple hidden />
+                </div>
+                <!-- Multi-stage Progress Indicator -->
+                <div id="progress-container" class="progress-container" style="display: none;">
+                    <div class="progress-stages">
+                        <div class="stage" id="stage-upload">
+                            <div class="stage-icon">📤</div>
+                            <span class="stage-name">Uploading</span>
+                            <div class="stage-bar"><div class="stage-fill"></div></div>
+                        </div>
+                        <div class="stage" id="stage-convert">
+                            <div class="stage-icon">🔄</div>
+                            <span class="stage-name">Converting</span>
+                            <div class="stage-bar"><div class="stage-fill"></div></div>
+                        </div>
+                        <div class="stage" id="stage-transcribe">
+                            <div class="stage-icon">🎯</div>
+                            <span class="stage-name">Transcribing</span>
+                            <div class="stage-bar"><div class="stage-fill"></div></div>
+                        </div>
+                        <div class="stage" id="stage-gpt">
+                            <div class="stage-icon">🤖</div>
+                            <span class="stage-name">AI Processing</span>
+                            <div class="stage-bar"><div class="stage-fill"></div></div>
+                        </div>
+                    </div>
+                    <div class="progress-status">
+                        <span id="progress-text">Initializing...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="waveform-visualizer" id="waveform"></div>
+                </div>
+                <progress id="progress-bar" value="0" max="100" style="display: none;"></progress>
+
+                <!-- GPT Function Output Components with animations -->
+                <div id="gpt-sections" class="gpt-sections-animated">
+                    <div class="gpt-section" id="notes-section">
+                        <h3>📝 Notes</h3>
+                        <div id="gpt-notes" class="gpt-output"></div>
+                    </div>
+                    <div class="gpt-section" id="summary-section">
+                        <h3>📄 Summary</h3>
+                        <div id="gpt-summary" class="gpt-output"></div>
+                    </div>
+                    <div class="gpt-section" id="action-items-section">
+                        <h3>✅ Action Items</h3>
+                        <div id="gpt-action-items" class="gpt-output"></div>
+                    </div>
+                </div>
+
+                <div id="result" class="result"></div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
