@@ -1,8 +1,5 @@
 {
-  "outputDirectory": "public",
   "rewrites": [
-    { "source": "/transcribe-and-analyze", "destination": "/api/index" },
-    { "source": "/generate-sections", "destination": "/api/index" },
-    { "source": "/health", "destination": "/api/index" }
+    { "source": "/(.*)", "destination": "/api/index" }
   ]
 }

@@ -3,13 +3,16 @@ import os
 import tempfile
 
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from openai import OpenAI
 
 load_dotenv()
 
-app = Flask(__name__)
+# public/ is one level up from api/
+PUBLIC_DIR = os.path.join(os.path.dirname(__file__), "..", "public")
+
+app = Flask(__name__, static_folder=PUBLIC_DIR, static_url_path="")
 CORS(app)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -51,6 +54,11 @@ Respond as JSON with keys: "notes", "summary", "action"."""},
         "summary": sections.get("summary", "No summary available"),
         "action": sections.get("action", "No action items"),
     }
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
 
 
 @app.route("/transcribe-and-analyze", methods=["POST"])
@@ -99,6 +107,11 @@ def generate_sections():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
+# Serve the React/static frontend for everything else
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path):
+    full = os.path.join(PUBLIC_DIR, path)
+    if path and os.path.exists(full):
+        return send_from_directory(PUBLIC_DIR, path)
+    return send_from_directory(PUBLIC_DIR, "index.html")
