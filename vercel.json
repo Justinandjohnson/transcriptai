@@ -1,8 +1,7 @@
 {
-  "builds": [
-    { "src": "python_server_optimized.py", "use": "@vercel/python" }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "python_server_optimized.py" }
+  "rewrites": [
+    { "source": "/transcribe-and-analyze", "destination": "/api/index" },
+    { "source": "/generate-sections", "destination": "/api/index" },
+    { "source": "/health", "destination": "/api/index" }
   ]
 }
