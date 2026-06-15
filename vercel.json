@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.9"
+    }
+  },
   "rewrites": [
     { "source": "/transcribe-and-analyze", "destination": "/api/index" },
     { "source": "/generate-sections", "destination": "/api/index" },
