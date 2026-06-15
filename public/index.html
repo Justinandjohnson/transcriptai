@@ -1,103 +1,253 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Transcription App</title>
-    <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TranscriptAI — Audio Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
 </head>
-
 <body>
-    <!-- Background animation particles -->
-    <div class="particles-bg"></div>
-    
-    <div id="app">
-        <h1 class="animated-title">
-            <span class="title-icon">🎙️</span>
-            <span class="title-text">Transcription App</span>
-        </h1>
-        <div id="dashboard">
-            <!-- Conversation History Panel -->
-            <aside id="history-panel" class="history-panel">
-                <h2>History</h2>
-                <ul id="history-list"></ul>
-            </aside>
-            <!-- Main Transcription Panel -->
-            <div class="main-panel">
-                <div id="drop-zone" class="drop-zone">
-                    <div class="drop-zone-inner">
-                        <div class="upload-animation">
-                            <div class="pulse-ring"></div>
-                            <div class="pulse-ring"></div>
-                            <div class="upload-icon-wrapper">
-                                <span class="upload-icon">📁</span>
-                            </div>
-                        </div>
-                        <p class="drop-text">Drag & drop audio/video files here,<br>or click to select multiple</p>
-                        <p style="font-size: 0.85em; color: #718096; margin-top: 8px;">📌 You can select multiple files at once!</p>
-                        <div class="supported-formats">
-                            <span class="format-badge">.mp3</span>
-                            <span class="format-badge">.wav</span>
-                            <span class="format-badge">.m4a</span>
-                            <span class="format-badge">.mp4</span>
-                        </div>
-                    </div>
-                    <input type="file" id="file-input" accept=".mp3,.wav,.m4a,.mp4" multiple hidden />
-                </div>
-                <!-- Multi-stage Progress Indicator -->
-                <div id="progress-container" class="progress-container" style="display: none;">
-                    <div class="progress-stages">
-                        <div class="stage" id="stage-upload">
-                            <div class="stage-icon">📤</div>
-                            <span class="stage-name">Uploading</span>
-                            <div class="stage-bar"><div class="stage-fill"></div></div>
-                        </div>
-                        <div class="stage" id="stage-convert">
-                            <div class="stage-icon">🔄</div>
-                            <span class="stage-name">Converting</span>
-                            <div class="stage-bar"><div class="stage-fill"></div></div>
-                        </div>
-                        <div class="stage" id="stage-transcribe">
-                            <div class="stage-icon">🎯</div>
-                            <span class="stage-name">Transcribing</span>
-                            <div class="stage-bar"><div class="stage-fill"></div></div>
-                        </div>
-                        <div class="stage" id="stage-gpt">
-                            <div class="stage-icon">🤖</div>
-                            <span class="stage-name">AI Processing</span>
-                            <div class="stage-bar"><div class="stage-fill"></div></div>
-                        </div>
-                    </div>
-                    <div class="progress-status">
-                        <span id="progress-text">Initializing...</span>
-                        <span id="progress-percent">0%</span>
-                    </div>
-                    <div class="waveform-visualizer" id="waveform"></div>
-                </div>
-                <progress id="progress-bar" value="0" max="100" style="display: none;"></progress>
+<div id="app">
 
-                <!-- GPT Function Output Components with animations -->
-                <div id="gpt-sections" class="gpt-sections-animated">
-                    <div class="gpt-section" id="notes-section">
-                        <h3>📝 Notes</h3>
-                        <div id="gpt-notes" class="gpt-output"></div>
-                    </div>
-                    <div class="gpt-section" id="summary-section">
-                        <h3>📄 Summary</h3>
-                        <div id="gpt-summary" class="gpt-output"></div>
-                    </div>
-                    <div class="gpt-section" id="action-items-section">
-                        <h3>✅ Action Items</h3>
-                        <div id="gpt-action-items" class="gpt-output"></div>
-                    </div>
-                </div>
-
-                <div id="result" class="result"></div>
-            </div>
-        </div>
+  <!-- Top bar -->
+  <header id="topbar">
+    <div class="tb-left">
+      <div class="logo">
+        <span class="logo-mark">◉</span>
+        <span class="logo-name">TranscriptAI</span>
+      </div>
+      <div class="model-tag">whisper-1 · gpt-4o-mini</div>
     </div>
-    <script src="script.js"></script>
-</body>
+    <div class="tb-right">
+      <div id="usage-indicator" class="usage-indicator">
+        <span class="usage-dot"></span>
+        <span id="usage-label">1 free use available</span>
+      </div>
+      <button id="byok-toggle" class="btn-sm btn-outline">Your API key</button>
+    </div>
+  </header>
 
+  <!-- BYOK strip -->
+  <div id="byok-strip" class="byok-strip hidden">
+    <span class="byok-label">OpenAI Key</span>
+    <input id="byok-input" type="password" class="byok-input" placeholder="sk-proj-…" autocomplete="off"/>
+    <button id="byok-apply" class="btn-sm btn-accent">Apply</button>
+    <button id="byok-remove" class="btn-sm btn-ghost">Remove</button>
+    <span class="byok-hint">Stored in this tab only · never sent to our servers</span>
+  </div>
+
+  <!-- Main 3-pane layout -->
+  <div id="layout">
+
+    <!-- Left sidebar: session history -->
+    <aside id="sidebar">
+      <div class="sidebar-hd">
+        <span class="sidebar-title">Sessions</span>
+        <button id="clear-all" class="icon-btn" title="Clear history">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          </svg>
+        </button>
+      </div>
+      <div id="history-list" class="history-list">
+        <div class="sidebar-empty">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/>
+          </svg>
+          <p>No sessions yet</p>
+          <p class="muted">Drop an audio file to start</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center workspace -->
+    <main id="workspace">
+
+      <!-- State: upload (default) -->
+      <div id="state-upload" class="ws-state">
+        <div id="drop-zone" class="drop-zone">
+          <input type="file" id="file-input" accept=".mp3,.wav,.m4a,.mp4,.webm" hidden/>
+          <div class="dz-inner">
+            <div class="dz-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <div class="dz-text">
+              <span class="dz-title">Drop audio or video here</span>
+              <span class="dz-sub">or <button class="link-btn" id="browse-btn">browse files</button></span>
+            </div>
+            <div class="dz-formats">
+              <span class="fmt">.mp3</span>
+              <span class="fmt">.wav</span>
+              <span class="fmt">.m4a</span>
+              <span class="fmt">.mp4</span>
+              <span class="fmt">.webm</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- State: processing -->
+      <div id="state-processing" class="ws-state hidden">
+        <div class="proc-card">
+          <div class="proc-hd">
+            <div class="proc-name" id="proc-name">file.mp3</div>
+            <div class="proc-badge">
+              <span class="proc-spinner"></span>
+              <span id="proc-label">Uploading…</span>
+            </div>
+          </div>
+
+          <!-- Pipeline stages -->
+          <div class="pipeline">
+            <div class="pipe-node" id="pipe-upload">
+              <div class="pipe-dot"></div>
+              <span class="pipe-label">Upload</span>
+            </div>
+            <div class="pipe-track"><div class="pipe-fill" id="track-1"></div></div>
+            <div class="pipe-node" id="pipe-transcribe">
+              <div class="pipe-dot"></div>
+              <span class="pipe-label">Transcribe</span>
+            </div>
+            <div class="pipe-track"><div class="pipe-fill" id="track-2"></div></div>
+            <div class="pipe-node" id="pipe-analyze">
+              <div class="pipe-dot"></div>
+              <span class="pipe-label">Analyze</span>
+            </div>
+          </div>
+
+          <div class="waveform" id="waveform"></div>
+        </div>
+      </div>
+
+      <!-- State: result -->
+      <div id="state-result" class="ws-state hidden">
+        <div class="result-toolbar">
+          <div class="result-meta">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span id="result-filename">transcript</span>
+          </div>
+          <div class="result-actions">
+            <button id="copy-btn" class="btn-sm btn-ghost">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
+              Copy
+            </button>
+            <button id="new-btn" class="btn-sm btn-outline">+ New</button>
+          </div>
+        </div>
+        <div id="transcript-text" class="transcript-text"></div>
+      </div>
+
+    </main>
+
+    <!-- Right panel: AI analysis -->
+    <aside id="analysis-panel">
+      <div class="panel-hd">
+        <span class="panel-title">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          AI Analysis
+        </span>
+        <div id="analysis-status" class="analysis-status hidden">
+          <span class="as-dot"></span>
+          Processing
+        </div>
+      </div>
+
+      <div id="analysis-empty" class="analysis-empty">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <p>Upload audio to see AI-powered notes, summary, and action items</p>
+      </div>
+
+      <div id="analysis-content" class="analysis-content hidden">
+
+        <div class="a-section">
+          <div class="a-hd">
+            <div class="a-icon a-icon-notes">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
+            <span>Key Notes</span>
+          </div>
+          <div id="a-notes" class="a-body"></div>
+        </div>
+
+        <div class="a-divider"></div>
+
+        <div class="a-section">
+          <div class="a-hd">
+            <div class="a-icon a-icon-summary">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="8" y1="6" x2="21" y2="6"/>
+                <line x1="8" y1="12" x2="21" y2="12"/>
+                <line x1="8" y1="18" x2="21" y2="18"/>
+                <line x1="3" y1="6" x2="3.01" y2="6"/>
+                <line x1="3" y1="12" x2="3.01" y2="12"/>
+                <line x1="3" y1="18" x2="3.01" y2="18"/>
+              </svg>
+            </div>
+            <span>Summary</span>
+          </div>
+          <div id="a-summary" class="a-body"></div>
+        </div>
+
+        <div class="a-divider"></div>
+
+        <div class="a-section">
+          <div class="a-hd">
+            <div class="a-icon a-icon-actions">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="9 11 12 14 22 4"/>
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+              </svg>
+            </div>
+            <span>Action Items</span>
+          </div>
+          <div id="a-actions" class="a-body"></div>
+        </div>
+
+      </div>
+    </aside>
+
+  </div><!-- /layout -->
+
+  <!-- Rate limit modal -->
+  <div id="limit-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-icon">◈</div>
+      <h3>Free use exhausted</h3>
+      <p>Paste your OpenAI API key to continue. It stays in your browser tab only — we never store it.</p>
+      <input type="password" id="modal-key" class="modal-input" placeholder="sk-proj-…" autocomplete="off"/>
+      <div class="modal-btns">
+        <button id="modal-continue" class="btn-primary">Continue with my key</button>
+        <button id="modal-cancel" class="btn-ghost-lg">Cancel</button>
+      </div>
+      <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="modal-link">Get a free API key →</a>
+    </div>
+  </div>
+
+</div><!-- /app -->
+<script src="script.js"></script>
+</body>
 </html>

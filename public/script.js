@@ -1,609 +1,416 @@
-const dropZone = document.getElementById("drop-zone");
-const progressBar = document.getElementById("progress-bar");
-const progressContainer = document.getElementById("progress-container");
-const result = document.getElementById("result");
-const gptSections = document.getElementById("gpt-sections");
+/* ── Constants ───────────────────────────────────────────────────── */
+const FREE_USES    = 1;
+const USED_KEY     = 'tai_used';
+const SESSION_KEY  = 'tai_key';
+const HISTORY_KEY  = 'tai_history';
 
-// Animation stages
-const stages = {
-  upload: document.getElementById("stage-upload"),
-  convert: document.getElementById("stage-convert"),
-  transcribe: document.getElementById("stage-transcribe"),
-  gpt: document.getElementById("stage-gpt"),
-};
-
-// Create waveform bars
-function createWaveform() {
-  const waveform = document.getElementById("waveform");
-  waveform.innerHTML = "";
-  for (let i = 0; i < 20; i++) {
-    const bar = document.createElement("div");
-    bar.className = "waveform-bar";
-    bar.style.animationDelay = `${i * 0.05}s`;
-    waveform.appendChild(bar);
-  }
+/* ── Usage helpers ───────────────────────────────────────────────── */
+function usesLeft() {
+  return Math.max(0, FREE_USES - parseInt(localStorage.getItem(USED_KEY) || '0', 10));
 }
-
-// Update stage progress
-function updateStage(stageName, progress, status = "active") {
-  const stage = stages[stageName];
-  if (!stage) return;
-
-  // Update stage status
-  stage.classList.remove("active", "completed");
-  if (status === "active") {
-    stage.classList.add("active");
-  } else if (status === "completed") {
-    stage.classList.add("completed");
-    stage.querySelector(".stage-icon").textContent = "✅";
-  }
-
-  // Update progress bar
-  const fill = stage.querySelector(".stage-fill");
-  if (fill) {
-    fill.style.width = `${progress}%`;
-  }
+function consumeUse() {
+  localStorage.setItem(USED_KEY, (parseInt(localStorage.getItem(USED_KEY) || '0', 10) + 1).toString());
 }
+function getUserKey() { return sessionStorage.getItem(SESSION_KEY) || null; }
+function setUserKey(k) { k ? sessionStorage.setItem(SESSION_KEY, k) : sessionStorage.removeItem(SESSION_KEY); }
 
-// Update overall progress
-function updateProgress(percent, text) {
-  const progressText = document.getElementById("progress-text");
-  const progressPercent = document.getElementById("progress-percent");
-
-  if (progressText) progressText.textContent = text;
-  if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
-}
-
-// Fast text display - no typing animation for speed
-function typeText(element, text, speed = 0) {
-  element.textContent = text;
-  element.classList.remove("typing");
-  return Promise.resolve();
-}
-
-// Drag and drop handlers
-dropZone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  dropZone.classList.add("dragover");
-});
-
-dropZone.addEventListener("dragleave", () => {
-  dropZone.classList.remove("dragover");
-});
-
-dropZone.addEventListener("drop", (e) => {
-  e.preventDefault();
-  dropZone.classList.remove("dragover");
-  const files = Array.from(e.dataTransfer.files);
-  if (files.length > 0) {
-    uploadMultipleFiles(files);
-  }
-});
-
-dropZone.addEventListener("click", () => {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".mp4,.m4a,.wav,.mp3";
-  input.multiple = true; // Enable multiple file selection
-  input.onchange = () => {
-    if (input.files.length > 0) {
-      uploadMultipleFiles(Array.from(input.files));
-    }
-  };
-  input.click();
-});
-
-// Process multiple files
-async function uploadMultipleFiles(files) {
-  // Show file count
-  const fileCount = files.length;
-  const fileNames = files.map(f => f.name).join(', ');
-  
-  result.textContent = `Processing ${fileCount} file${fileCount > 1 ? 's' : ''}: ${fileNames}`;
-  result.style.opacity = "1";
-  
-  // Process files sequentially to avoid overwhelming the server
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    updateProgress((i / files.length) * 100, `Processing file ${i + 1} of ${fileCount}: ${file.name}`);
-    await uploadFile(file, i + 1, fileCount);
-  }
-  
-  // Show completion message
-  updateProgress(100, `All ${fileCount} files processed successfully!`);
-  
-  // Add summary if multiple files
-  if (fileCount > 1) {
-    const summaryDiv = document.createElement("div");
-    summaryDiv.className = "batch-summary";
-    summaryDiv.style.cssText = `
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 20px;
-      border-radius: 12px;
-      margin: 20px 0;
-      font-size: 1.1em;
-      text-align: center;
-      animation: fadeInUp 0.5s ease-out;
-    `;
-    summaryDiv.innerHTML = `
-      <h3 style="margin: 0 0 10px 0;">✅ Batch Processing Complete</h3>
-      <p style="margin: 0;">Successfully processed ${fileCount} audio files</p>
-      <p style="margin: 5px 0 0 0; font-size: 0.9em; opacity: 0.9;">Check the history panel for all transcriptions</p>
-    `;
-    result.parentElement.insertBefore(summaryDiv, result.nextSibling);
-    
-    // Remove summary after 10 seconds
-    setTimeout(() => {
-      summaryDiv.style.opacity = "0";
-      setTimeout(() => summaryDiv.remove(), 500);
-    }, 10000);
-  }
-}
-
-// Main upload function with animations - OPTIMIZED
-async function uploadFile(file, currentFileNum = 1, totalFiles = 1) {
-  // Show progress container with animation
-  progressContainer.style.display = "block";
-  progressContainer.classList.add("progress-container");
-
-  // Create waveform
-  createWaveform();
-
-  // Reset all stages
-  Object.values(stages).forEach((stage) => {
-    stage.classList.remove("active", "completed");
-    stage.querySelector(".stage-fill").style.width = "0%";
-    const icon = stage.querySelector(".stage-icon");
-    if (stage.id === "stage-upload") icon.textContent = "📤";
-    else if (stage.id === "stage-convert") icon.textContent = "🔄";
-    else if (stage.id === "stage-transcribe") icon.textContent = "🎯";
-    else if (stage.id === "stage-gpt") icon.textContent = "🤖";
-  });
-
-  // Show immediate feedback with file counter if multiple files
-  if (totalFiles > 1) {
-    result.innerHTML = `
-      <div style="margin-bottom: 10px; color: #667eea; font-weight: 600;">
-        File ${currentFileNum} of ${totalFiles}
-      </div>
-      <div>Processing ${file.name}...</div>
-    `;
+function updateUsageBadge() {
+  const ind   = el('usage-indicator');
+  const label = el('usage-label');
+  const key   = getUserKey();
+  if (key) {
+    ind.className = 'usage-indicator byok';
+    label.textContent = 'Using your key';
+  } else if (usesLeft() > 0) {
+    ind.className = 'usage-indicator';
+    label.textContent = `${usesLeft()} free use remaining`;
   } else {
-    result.textContent = `Processing ${file.name}...`;
+    ind.className = 'usage-indicator exhausted';
+    label.textContent = 'Free use exhausted';
   }
-  result.style.opacity = "1";
-  result.classList.remove("typing");
+}
 
-  // Hide GPT sections initially
-  document.querySelectorAll(".gpt-section").forEach((section) => {
-    section.classList.remove("show");
-    section.querySelector(".gpt-output").textContent = "";
+/* ── DOM shortcuts ───────────────────────────────────────────────── */
+const el = id => document.getElementById(id);
+
+/* ── Workspace state machine ─────────────────────────────────────── */
+const STATES = ['state-upload', 'state-processing', 'state-result'];
+function setState(s) {
+  STATES.forEach(id => el(id).classList.toggle('hidden', id !== s));
+}
+
+/* ── Pipeline ────────────────────────────────────────────────────── */
+const PIPE_STAGES = ['upload', 'transcribe', 'analyze'];
+
+function setPipe(active) {
+  const idx = PIPE_STAGES.indexOf(active);
+  PIPE_STAGES.forEach((s, i) => {
+    const node = el('pipe-' + s);
+    node.classList.remove('active', 'done');
+    if (i < idx)      node.classList.add('done');
+    else if (i === idx) node.classList.add('active');
   });
+  [el('track-1'), el('track-2')].forEach((t, i) => {
+    t.style.width = i < idx ? '100%' : '0%';
+  });
+}
+
+function pipeAllDone() {
+  PIPE_STAGES.forEach(s => {
+    const n = el('pipe-' + s);
+    n.classList.remove('active');
+    n.classList.add('done');
+  });
+  [el('track-1'), el('track-2')].forEach(t => t.style.width = '100%');
+}
+
+/* ── Waveform ────────────────────────────────────────────────────── */
+function buildWaveform() {
+  const w = el('waveform');
+  w.innerHTML = '';
+  for (let i = 0; i < 30; i++) {
+    const b = document.createElement('div');
+    b.className = 'waveform-bar';
+    b.style.animationDelay    = `${(i * 0.065).toFixed(3)}s`;
+    b.style.animationDuration = `${(0.65 + (i % 7) * 0.07).toFixed(2)}s`;
+    w.appendChild(b);
+  }
+}
+
+/* ── BYOK strip ──────────────────────────────────────────────────── */
+el('byok-toggle').addEventListener('click', () => {
+  const strip = el('byok-strip');
+  const open  = strip.classList.toggle('hidden') === false;
+  document.getElementById('app').classList.toggle('byok-open', open);
+  if (open) {
+    const existing = getUserKey();
+    if (existing) el('byok-input').value = existing;
+    el('byok-input').focus();
+  }
+});
+
+el('byok-apply').addEventListener('click', applyByok);
+el('byok-input').addEventListener('keydown', e => { if (e.key === 'Enter') applyByok(); });
+
+function applyByok() {
+  const k = el('byok-input').value.trim();
+  if (!k.startsWith('sk-')) {
+    flash(el('byok-input'), 'error');
+    return;
+  }
+  setUserKey(k);
+  updateUsageBadge();
+  el('byok-strip').classList.add('hidden');
+  document.getElementById('app').classList.remove('byok-open');
+}
+
+el('byok-remove').addEventListener('click', () => {
+  setUserKey(null);
+  el('byok-input').value = '';
+  updateUsageBadge();
+  el('byok-strip').classList.add('hidden');
+  document.getElementById('app').classList.remove('byok-open');
+});
+
+function flash(input, cls) {
+  input.classList.add(cls);
+  setTimeout(() => input.classList.remove(cls), 1400);
+}
+
+/* ── Rate limit modal ────────────────────────────────────────────── */
+function showLimitModal() {
+  return new Promise(resolve => {
+    const modal = el('limit-modal');
+    const input = el('modal-key');
+    modal.classList.remove('hidden');
+    input.value = '';
+    input.focus();
+
+    function cleanup() {
+      modal.classList.add('hidden');
+      el('modal-continue').removeEventListener('click', onGo);
+      el('modal-cancel').removeEventListener('click', onNo);
+      input.removeEventListener('keydown', onEnter);
+    }
+
+    function onGo() {
+      const k = input.value.trim();
+      if (!k.startsWith('sk-')) { flash(input, 'error'); return; }
+      setUserKey(k);
+      updateUsageBadge();
+      cleanup();
+      resolve(true);
+    }
+
+    function onNo() { cleanup(); resolve(false); }
+    function onEnter(e) { if (e.key === 'Enter') onGo(); }
+
+    el('modal-continue').addEventListener('click', onGo);
+    el('modal-cancel').addEventListener('click', onNo);
+    input.addEventListener('keydown', onEnter);
+  });
+}
+
+async function canProceed() {
+  if (getUserKey()) return true;
+  if (usesLeft() > 0) return true;
+  return showLimitModal();
+}
+
+/* ── Drag & drop / file input ────────────────────────────────────── */
+const dropZone = el('drop-zone');
+const fileInput = el('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const files = Array.from(e.dataTransfer.files);
+  if (files.length) handleFile(files[0]);
+});
+
+dropZone.addEventListener('click', () => fileInput.click());
+el('browse-btn').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) handleFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+
+/* ── Core upload flow ────────────────────────────────────────────── */
+async function handleFile(file) {
+  if (!(await canProceed())) return;
+  await runUpload(file);
+}
+
+async function runUpload(file) {
+  /* switch to processing UI */
+  setState('state-processing');
+  el('proc-name').textContent = file.name;
+  el('proc-label').textContent = 'Uploading…';
+  setPipe('upload');
+  buildWaveform();
+
+  /* reset analysis panel */
+  el('analysis-empty').classList.remove('hidden');
+  el('analysis-content').classList.add('hidden');
+  el('analysis-status').classList.remove('hidden');
 
   const formData = new FormData();
-  formData.append("audio", file);
+  formData.append('audio', file);
 
-  const xhr = new XMLHttpRequest();
-  // Use optimized combined endpoint for speed
-  const backendUrl = `/transcribe-and-analyze`;
-  xhr.open("POST", backendUrl, true);
+  const headers = {};
+  const userKey = getUserKey();
+  if (userKey) headers['X-OpenAI-Key'] = userKey;
 
-  // Upload progress
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) {
-      const percent = (e.loaded / e.total) * 100;
-      updateStage("upload", percent, "active");
-      const baseProgress = ((currentFileNum - 1) / totalFiles) * 100;
-      const fileProgress = (percent * 0.25) / totalFiles;
-      updateProgress(baseProgress + fileProgress, `Uploading ${file.name}... (${currentFileNum}/${totalFiles})`);
-    }
-  };
-
-  // Handle response
-  xhr.onload = async () => {
-    if (xhr.status === 200) {
-      const response = JSON.parse(xhr.responseText);
-
-      // Rapid stage updates
-      updateStage("upload", 100, "completed");
-      updateStage("convert", 100, "completed");
-      updateProgress(40, "Processing...");
-      
-      updateStage("transcribe", 100, "completed");
-      updateProgress(60, "Analyzing...");
-
-      // Display transcription immediately with file info
-      if (response.text) {
-        if (totalFiles > 1) {
-          result.innerHTML = `
-            <div style="margin-bottom: 10px; padding: 10px; background: #f7fafc; border-radius: 8px;">
-              <span style="color: #667eea; font-weight: 600;">File ${currentFileNum}/${totalFiles}:</span>
-              <span style="color: #4a5568; margin-left: 10px;">${file.name}</span>
-            </div>
-            <div>${response.text}</div>
-          `;
-        } else {
-          result.textContent = response.text;
-        }
-        result.style.opacity = "1";
-      }
-
-      // Process GPT sections if available
-      if (response.sections) {
-        updateStage("gpt", 50, "active");
-        displayGPTSections(response.sections);
-        updateStage("gpt", 100, "completed");
-        
-        // Save to history with GPT data
-        addToHistory(file.name, response.text, response.sections);
-      } else {
-        // Fallback to separate GPT call if needed
-        updateStage("gpt", 0, "active");
-        await simulateGPTProcessing(response.text);
-        updateStage("gpt", 100, "completed");
-        
-        // Save to history
-        addToHistory(file.name, response.text);
-      }
-
-      // Update progress based on file position
-      const finalProgress = (currentFileNum / totalFiles) * 100;
-      updateProgress(finalProgress, totalFiles > 1 ? `Completed ${currentFileNum} of ${totalFiles} files` : "Complete!");
-
-      // Only hide progress container after all files are done
-      if (currentFileNum === totalFiles) {
-        setTimeout(() => {
-          progressContainer.style.display = "none";
-        }, 300);
-      }
-
-    } else {
-      result.textContent = "Error during processing.";
-      progressContainer.style.display = "none";
-    }
-  };
-
-  xhr.onerror = () => {
-    result.textContent = "Network error. Please check if the server is running.";
-    progressContainer.style.display = "none";
-  };
-
-  xhr.send(formData);
-}
-
-// New function to display GPT sections directly
-function displayGPTSections(data) {
-  const sections = [
-    { id: "notes-section", outputId: "gpt-notes", key: "notes" },
-    { id: "summary-section", outputId: "gpt-summary", key: "summary" },
-    { id: "action-items-section", outputId: "gpt-action-items", key: "action" },
-  ];
-
-  sections.forEach((sectionInfo) => {
-    const section = document.getElementById(sectionInfo.id);
-    const output = document.getElementById(sectionInfo.outputId);
-    
-    section.classList.add("show");
-    
-    // Format the output based on the section type
-    if (sectionInfo.key === "notes" && Array.isArray(data[sectionInfo.key])) {
-      const notes = data[sectionInfo.key];
-      if (notes.length > 0) {
-        const formattedNotes = notes.map(note => `• ${note}`).join('\n\n');
-        output.textContent = formattedNotes;
-        output.style.whiteSpace = "pre-wrap";
-        output.style.lineHeight = "1.6";
-      } else {
-        output.textContent = "No notes available";
-      }
-    } else if (sectionInfo.key === "summary") {
-      output.textContent = data[sectionInfo.key] || "No summary available";
-      output.style.whiteSpace = "pre-wrap";
-      output.style.lineHeight = "1.8";
-      output.style.textAlign = "justify";
-    } else if (sectionInfo.key === "action" && Array.isArray(data[sectionInfo.key])) {
-      const actions = data[sectionInfo.key];
-      if (actions.length > 0) {
-        const formattedActions = actions.map((action, index) => `${index + 1}. ${action}`).join('\n\n');
-        output.textContent = formattedActions;
-        output.style.whiteSpace = "pre-wrap";
-        output.style.lineHeight = "1.8";
-        output.style.fontWeight = "500";
-      } else {
-        output.textContent = "No action items identified";
-      }
-    }
-  });
-}
-
-// GPT processing replaced with real API call
-async function simulateGPTProcessing(transcriptionText) {
-  const sections = [
-    { id: "notes-section", outputId: "gpt-notes", key: "notes" },
-    { id: "summary-section", outputId: "gpt-summary", key: "summary" },
-    { id: "action-items-section", outputId: "gpt-action-items", key: "action" },
-  ];
-
+  let data;
   try {
-    // Use relative URL to work with any port
-    const backendUrl = `/generate-sections`;
-    const resp = await fetch(backendUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: transcriptionText }),
-    });
-    const data = await resp.json();
-
-    // Display all sections with proper formatting
-    sections.forEach((sectionInfo, i) => {
-      const section = document.getElementById(sectionInfo.id);
-      const output = document.getElementById(sectionInfo.outputId);
-      
-      section.classList.add("show");
-      
-      // Format the output based on the section type
-      if (sectionInfo.key === "notes" && Array.isArray(data[sectionInfo.key])) {
-        // Format notes as a bulleted list with proper spacing
-        const notes = data[sectionInfo.key];
-        if (notes.length > 0) {
-          const formattedNotes = notes.map(note => {
-            // Add bullet point and proper formatting
-            return `• ${note}`;
-          }).join('\n\n');
-          output.textContent = formattedNotes;
-          output.style.whiteSpace = "pre-wrap";
-          output.style.lineHeight = "1.6";
-        } else {
-          output.textContent = "No notes available";
-        }
-      } else if (sectionInfo.key === "summary") {
-        // Display summary with proper paragraph formatting
-        output.textContent = data[sectionInfo.key] || "No summary available";
-        output.style.whiteSpace = "pre-wrap";
-        output.style.lineHeight = "1.8";
-        output.style.textAlign = "justify";
-      } else if (sectionInfo.key === "action" && Array.isArray(data[sectionInfo.key])) {
-        // Format action items as a numbered list with emphasis
-        const actions = data[sectionInfo.key];
-        if (actions.length > 0) {
-          const formattedActions = actions.map((action, index) => {
-            // Add numbering and formatting
-            return `${index + 1}. ${action}`;
-          }).join('\n\n');
-          output.textContent = formattedActions;
-          output.style.whiteSpace = "pre-wrap";
-          output.style.lineHeight = "1.8";
-          output.style.fontWeight = "500";
-        } else {
-          output.textContent = "No action items identified";
-        }
-      } else {
-        // Fallback for any other format
-        output.textContent = data[sectionInfo.key] || "No data available";
+    data = await xhrUpload('/transcribe-and-analyze', formData, headers, pct => {
+      if (pct === 100) {
+        setPipe('transcribe');
+        el('proc-label').textContent = 'Transcribing…';
       }
-      
-      updateStage("gpt", (i + 1) * 33, "active");
     });
-    
-    // Store the GPT data with the transcription for history
-    const history = JSON.parse(localStorage.getItem("transcriptionHistory")) || [];
-    if (history.length > 0) {
-      history[0].gptData = data;
-      localStorage.setItem("transcriptionHistory", JSON.stringify(history));
-    }
-    
   } catch (err) {
-    console.error("Error fetching GPT sections:", err);
-    // Show error message in sections
-    sections.forEach((sectionInfo) => {
-      const section = document.getElementById(sectionInfo.id);
-      const output = document.getElementById(sectionInfo.outputId);
-      section.classList.add("show");
-      output.textContent = "Error generating content. Please try again.";
-      output.style.color = "#ff6b6b";
-    });
-  }
-}
-
-// Generate sample notes (in real app, this would come from GPT)
-function generateNotes(text) {
-  const words = text.split(" ").slice(0, 20).join(" ");
-  return `Key Points:\n• ${words}...\n• Important discussion topics identified\n• Follow-up required on mentioned items`;
-}
-
-// Generate sample summary (in real app, this would come from GPT)
-function generateSummary(text) {
-  const words = text.split(" ").slice(0, 15).join(" ");
-  return `Summary: ${words}... This transcription covers important topics that were discussed in detail.`;
-}
-
-// Generate sample action items (in real app, this would come from GPT)
-function generateActionItems(text) {
-  return `1. Review transcribed content\n2. Follow up on key discussion points\n3. Schedule next meeting\n4. Share notes with team`;
-}
-
-// History management with animations
-function addToHistory(filename, text, gptData = null) {
-  const history =
-    JSON.parse(localStorage.getItem("transcriptionHistory")) || [];
-  const item = {
-    filename,
-    text,
-    timestamp: new Date().toISOString(),
-    id: Date.now(),
-    gptData: gptData
-  };
-
-  history.unshift(item);
-
-  // Keep only last 50 items
-  if (history.length > 50) {
-    history.pop();
+    showError(err.message);
+    return;
   }
 
-  localStorage.setItem("transcriptionHistory", JSON.stringify(history));
+  /* transition to analyze stage */
+  setPipe('analyze');
+  el('proc-label').textContent = 'Analyzing…';
+  await pause(350);
 
-  // Add to UI with animation
-  const li = document.createElement("li");
-  const timestamp = new Date(item.timestamp).toLocaleString();
-  li.innerHTML = `
-    <div style="font-weight: 600; color: #667eea;">${filename}</div>
-    <div style="font-size: 0.85em; color: #718096; margin: 4px 0;">${timestamp}</div>
-    <div style="font-size: 0.9em; color: #4a5568;">${text.substring(0, 80)}...</div>
-  `;
-  li.dataset.id = item.id;
-  li.style.animation = "fadeInUp 0.5s ease-out";
-  li.style.cursor = "pointer";
-  li.style.padding = "12px";
-  li.style.borderBottom = "1px solid #e2e8f0";
-  li.style.transition = "background-color 0.2s";
-  
-  // Add hover effect
-  li.addEventListener("mouseenter", () => {
-    li.style.backgroundColor = "#f7fafc";
-  });
-  li.addEventListener("mouseleave", () => {
-    li.style.backgroundColor = "transparent";
-  });
+  /* consume free use if applicable */
+  if (!getUserKey()) consumeUse();
+  updateUsageBadge();
 
-  // Add click handler to load item
-  li.addEventListener("click", () => loadHistoryItem(item));
+  pipeAllDone();
+  await pause(280);
 
-  const historyList = document.getElementById("history-list");
-  historyList.insertBefore(li, historyList.firstChild);
+  /* show results */
+  showResult(file.name, data);
+  addHistory(file.name, data);
 }
 
-// Load history item with animation
-function loadHistoryItem(item) {
-  // Animate result display
-  result.style.opacity = "0";
-  setTimeout(() => {
-    result.textContent = item.text;
-    result.style.opacity = "1";
-    result.style.transition = "opacity 0.5s ease";
-  }, 200);
+function xhrUpload(url, formData, headers, onUploadProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
 
-  // Show GPT sections if they exist
-  if (item.gptData) {
-    const sections = [
-      { id: "notes-section", outputId: "gpt-notes", key: "notes" },
-      { id: "summary-section", outputId: "gpt-summary", key: "summary" },
-      { id: "action-items-section", outputId: "gpt-action-items", key: "action" },
-    ];
-    
-    sections.forEach((sectionInfo, index) => {
-      setTimeout(() => {
-        const section = document.getElementById(sectionInfo.id);
-        const output = document.getElementById(sectionInfo.outputId);
-        
-        section.classList.add("show");
-        
-        // Format the output based on the section type
-        if (sectionInfo.key === "notes" && Array.isArray(item.gptData[sectionInfo.key])) {
-          const notes = item.gptData[sectionInfo.key];
-          if (notes.length > 0) {
-            const formattedNotes = notes.map(note => `• ${note}`).join('\n\n');
-            output.textContent = formattedNotes;
-            output.style.whiteSpace = "pre-wrap";
-            output.style.lineHeight = "1.6";
-          }
-        } else if (sectionInfo.key === "summary") {
-          output.textContent = item.gptData[sectionInfo.key] || "No summary available";
-          output.style.whiteSpace = "pre-wrap";
-          output.style.lineHeight = "1.8";
-          output.style.textAlign = "justify";
-        } else if (sectionInfo.key === "action" && Array.isArray(item.gptData[sectionInfo.key])) {
-          const actions = item.gptData[sectionInfo.key];
-          if (actions.length > 0) {
-            const formattedActions = actions.map((action, idx) => `${idx + 1}. ${action}`).join('\n\n');
-            output.textContent = formattedActions;
-            output.style.whiteSpace = "pre-wrap";
-            output.style.lineHeight = "1.8";
-            output.style.fontWeight = "500";
-          }
-        }
-      }, index * 200);
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) onUploadProgress(Math.round(e.loaded / e.total * 100));
+    };
+
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { reject(new Error('Invalid server response')); }
+      } else {
+        let msg = 'Upload failed';
+        try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}
+        reject(new Error(msg));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network error — is the server running?'));
+    xhr.send(formData);
+  });
+}
+
+async function showError(msg) {
+  el('proc-label').textContent = `Error: ${msg}`;
+  el('proc-label').style.color = 'var(--red)';
+  el('proc-spinner').style.display = 'none';
+  await pause(2500);
+  el('proc-label').style.color = '';
+  el('proc-spinner').style.display = '';
+  setState('state-upload');
+}
+
+/* ── Display results ─────────────────────────────────────────────── */
+function showResult(filename, data) {
+  el('result-filename').textContent = filename;
+  el('transcript-text').textContent = data.text || '(empty transcript)';
+
+  el('analysis-status').classList.add('hidden');
+  el('analysis-empty').classList.add('hidden');
+
+  fillSection('a-notes',   data.notes,   'notes');
+  fillSection('a-summary', data.summary, 'summary');
+  fillSection('a-actions', data.action,  'actions');
+
+  el('analysis-content').classList.remove('hidden');
+  el('analysis-content').classList.add('fade-up');
+
+  setState('state-result');
+}
+
+function fillSection(id, content, type) {
+  const container = el(id);
+  container.innerHTML = '';
+  container.className = 'a-body';
+
+  if (!content) {
+    container.textContent = 'No data available.';
+    return;
+  }
+
+  if (Array.isArray(content)) {
+    const ul = document.createElement('ul');
+    if (type === 'actions') { ul.className = 'actions-list'; }
+    content.forEach(item => {
+      const li = document.createElement('li');
+      if (type === 'actions') li.className = 'action-item';
+      li.textContent = item;
+      ul.appendChild(li);
     });
+    container.appendChild(ul);
+  } else if (typeof content === 'string' && content.includes('\n')) {
+    /* multi-line string from notes/actions */
+    const lines = content.split('\n').filter(l => l.trim());
+    const ul = document.createElement('ul');
+    lines.forEach(line => {
+      const li = document.createElement('li');
+      li.textContent = line.replace(/^[•\-\d.]\s*/, '');
+      ul.appendChild(li);
+    });
+    container.appendChild(ul);
   } else {
-    // If no GPT data, regenerate it
-    simulateGPTProcessing(item.text);
+    container.textContent = content;
   }
 }
 
-// Load history on page load with staggered animation
-window.addEventListener("DOMContentLoaded", () => {
-  const history =
-    JSON.parse(localStorage.getItem("transcriptionHistory")) || [];
-  const historyList = document.getElementById("history-list");
-  historyList.innerHTML = "";
+/* ── Copy & New ──────────────────────────────────────────────────── */
+el('copy-btn').addEventListener('click', async () => {
+  const text = el('transcript-text').textContent;
+  await navigator.clipboard.writeText(text).catch(() => {});
+  el('copy-btn').textContent = 'Copied!';
+  setTimeout(() => {
+    el('copy-btn').innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy`;
+  }, 2000);
+});
 
-  history.forEach((item, index) => {
-    const li = document.createElement("li");
-    li.textContent = `${item.filename}: ${item.text.substring(0, 50)}...`;
-    li.dataset.id = item.id || Date.now() + index;
+el('new-btn').addEventListener('click', () => {
+  setState('state-upload');
+});
 
-    // Stagger animation
-    li.style.animationDelay = `${index * 0.05}s`;
+/* ── History ─────────────────────────────────────────────────────── */
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+  catch { return []; }
+}
 
-    // Add click handler
-    li.addEventListener("click", () => loadHistoryItem(item));
+function saveHistory(h) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+}
 
-    historyList.appendChild(li);
+function addHistory(filename, data) {
+  const h = loadHistory();
+  h.unshift({ id: Date.now(), filename, timestamp: new Date().toISOString(), data });
+  if (h.length > 30) h.pop();
+  saveHistory(h);
+  renderHistory(h);
+}
+
+function renderHistory(history) {
+  const list = el('history-list');
+  if (!history.length) {
+    list.innerHTML = `
+      <div class="sidebar-empty">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/>
+        </svg>
+        <p>No sessions yet</p>
+        <p class="muted">Drop an audio file to start</p>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = '';
+  history.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'history-item fade-up';
+    div.dataset.id = item.id;
+
+    const time = new Date(item.timestamp);
+    const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    div.innerHTML = `
+      <div class="hi-name">${esc(item.filename)}</div>
+      <div class="hi-time">${timeStr}</div>
+      <div class="hi-preview">${esc((item.data.text || '').substring(0, 58))}${(item.data.text || '').length > 58 ? '…' : ''}</div>
+    `;
+
+    div.addEventListener('click', () => {
+      document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+      div.classList.add('active');
+      showResult(item.filename, item.data);
+    });
+
+    list.appendChild(div);
   });
-
-  // Add floating particles dynamically
-  createFloatingParticles();
-});
-
-// Create floating particles for background
-function createFloatingParticles() {
-  const particlesBg = document.querySelector(".particles-bg");
-  if (!particlesBg) return;
-
-  for (let i = 0; i < 5; i++) {
-    const particle = document.createElement("div");
-    particle.style.position = "absolute";
-    particle.style.width = `${Math.random() * 100 + 50}px`;
-    particle.style.height = particle.style.width;
-    particle.style.background = `radial-gradient(circle, rgba(102, 126, 234, ${
-      Math.random() * 0.1 + 0.05
-    }) 0%, transparent 70%)`;
-    particle.style.borderRadius = "50%";
-    particle.style.left = `${Math.random() * 100}%`;
-    particle.style.top = `${Math.random() * 100}%`;
-    particle.style.animation = `float ${
-      20 + Math.random() * 10
-    }s infinite ease-in-out`;
-    particle.style.animationDelay = `${Math.random() * 10}s`;
-    particlesBg.appendChild(particle);
-  }
 }
 
-// Add keyboard shortcuts
-document.addEventListener("keydown", (e) => {
-  // Ctrl/Cmd + O to open file
-  if ((e.ctrlKey || e.metaKey) && e.key === "o") {
-    e.preventDefault();
-    dropZone.click();
-  }
-
-  // Ctrl/Cmd + H to toggle history
-  if ((e.ctrlKey || e.metaKey) && e.key === "h") {
-    e.preventDefault();
-    const historyPanel = document.getElementById("history-panel");
-    historyPanel.style.display =
-      historyPanel.style.display === "none" ? "block" : "none";
-  }
+el('clear-all').addEventListener('click', () => {
+  if (!confirm('Clear all session history?')) return;
+  saveHistory([]);
+  renderHistory([]);
+  setState('state-upload');
+  el('analysis-empty').classList.remove('hidden');
+  el('analysis-content').classList.add('hidden');
 });
 
-// Add visual feedback for microphone icon
-setInterval(() => {
-  const titleIcon = document.querySelector(".title-icon");
-  if (titleIcon && progressContainer.style.display === "block") {
-    titleIcon.style.transform = "scale(1.1)";
-    setTimeout(() => {
-      titleIcon.style.transform = "scale(1)";
-    }, 500);
-  }
-}, 2000);
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function pause(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ── Init ────────────────────────────────────────────────────────── */
+updateUsageBadge();
+renderHistory(loadHistory());
+setState('state-upload');

@@ -19,9 +19,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 def get_client():
-    if not OPENAI_API_KEY:
-        raise RuntimeError("Missing OPENAI_API_KEY environment variable")
-    return OpenAI(api_key=OPENAI_API_KEY)
+    key = request.headers.get("X-OpenAI-Key") or OPENAI_API_KEY
+    if not key:
+        raise RuntimeError("No API key available")
+    return OpenAI(api_key=key)
 
 
 def analyze_text(text):
