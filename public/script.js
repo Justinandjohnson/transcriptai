@@ -18,15 +18,16 @@ function updateUsageBadge() {
   const ind   = el('usage-indicator');
   const label = el('usage-label');
   const key   = getUserKey();
+  const sm    = window.innerWidth <= 520;
   if (key) {
     ind.className = 'usage-indicator byok';
-    label.textContent = 'Using your key';
+    label.textContent = sm ? 'My key' : 'Using your key';
   } else if (usesLeft() > 0) {
     ind.className = 'usage-indicator';
-    label.textContent = `${usesLeft()} free use remaining`;
+    label.textContent = sm ? `${usesLeft()} free left` : `${usesLeft()} free use remaining`;
   } else {
     ind.className = 'usage-indicator exhausted';
-    label.textContent = 'Free use exhausted';
+    label.textContent = sm ? 'Free used' : 'Free use exhausted';
   }
 }
 
@@ -37,6 +38,7 @@ const el = id => document.getElementById(id);
 const STATES = ['state-upload', 'state-processing', 'state-result'];
 function setState(s) {
   STATES.forEach(id => el(id).classList.toggle('hidden', id !== s));
+  if (s !== 'state-result') el('layout').classList.remove('mobile-results');
 }
 
 /* ── Pipeline ────────────────────────────────────────────────────── */
@@ -285,6 +287,7 @@ function showResult(filename, data) {
   el('analysis-content').classList.add('fade-up');
 
   setState('state-result');
+  if (window.innerWidth <= 520) el('layout').classList.add('mobile-results');
 }
 
 function fillSection(id, content, type) {
